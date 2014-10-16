@@ -1,0 +1,12 @@
+# Function to take square root using Newton-Raphson approximation
+# Newton-Raphson Formula: X_n = X_n-1 - (F(x_n-1) / F'(X_n-1))
+# Square Root Formula: X^2 - C = 0, where C is the input value
+# Begin data segment
+
+.data
+
+
+
+
+
+.text
