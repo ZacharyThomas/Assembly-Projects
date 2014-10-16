@@ -1,12 +1,52 @@
-# Function to take square root using Newton-Raphson approximation
+# Function to take square root of input float using Newton-Raphson approximation
 # Newton-Raphson Formula: X_n = X_n-1 - (F(x_n-1) / F'(X_n-1))
 # Square Root Formula: X^2 - C = 0, where C is the input value
+
 # Begin data segment
-
 .data
+inputVal		:	.space 4			# Initial input value storage
+iteration		: 	.space 4			# Input iteration value storage
+initialGuess	:	.float 100.0		# Initial guess of square root value
+resultVal		:	.float 100.0		# Final result value stored in memory
+multiplyVal	:	.float 2.0			# Multiply value
+iterString	:	.asciiz "Please enter an integer indicating the number of iterations: "
+inputString	:	.asciiz "Please enter a floating point number to be square rooted: "
 
-
-
-
-
+# Begin code segment
 .text
+main:
+	# Prompt user for input value (float)  
+	addi $v0, $zero, 4
+	la $a0, inputString
+	syscall
+	# Read float
+	addi $v0, $zero, 6
+	syscall				
+	# Input float stored in f0
+	s.s $f0, inputVal
+	addi $a0, $a0, 1
+	# Prompt user for input value (integer)  
+	addi $v0, $zero, 4
+	la $a0, iterString
+	syscall
+	# Read integer
+	addi $v0, $zero, 5
+	syscall	
+	# Input integer stored in $v0
+	sw $v0, iteration
+	l.s $f31, inputVal 				# Input val (C) in $f31
+	l.s $f30, multiplyVal				# Store 2.0 in f30
+# Formula: resultVal = resultVal - (resultVal^2 - C) / (2*resultVal) 
+newton_raphson:
+	# Load resultVal in $f0
+	l.s  $f0, resultVal
+	# Caculate resultVal^2 - C
+	mul.s $f1, $f0, $f0 			# X^2 stored in $f1
+	sub.s $f2, $f1, $f31			# Subtract $f1 - C stored in $f2
+	# Calculate 2*resultVal
+	mul.s $f3, $f0, $f30			# Stores result of 2*ResultVal in $f3
+	div.s $f4, $f2, $f3			# Divide $f2 by $f3, store in $f4
+	sub.s $f0, $f0, $f4			# Store $f0 - $f4 in f0
+	subi $v0, $v0, 1			# Subtract 1 from iteration count
+	s.s $f0, resultVal
+	bnez $v0, newton_raphson
