@@ -1,0 +1,306 @@
+### Code to solve an input arithmetic expression 
+### Made by Zack Smith on 10/27/14
+### Advanced Processors MIPS Assignment 2
+
+# Data segment for variable declarations
+	.data							# Begin data segment
+
+### Empty storage declarations
+
+inputString:							# Create variable inputString
+	.space 200						# Reserve 400 bytes of data
+noSpaceString:						# Create variable noSpaceString
+	.space 200						# Reserve 400 bytes of data
+priorityArray:							# Variable priorityArray for storing priority levels
+	.space 200						# Reserve 400 bytes of data
+
+### ASCII string storage declarations
+
+displayString:							# Create variable displayString
+	.asciiz "Please enter an expression: "	# Save prompt text in memory
+availableCharacters: 					# Store valid characters in 
+	.asciiz "()0123456789*+-/%"			# All valid characters probably
+validString:							# Create variable validString
+	.asciiz "This expression is valid."		# Output string if input is valid
+invalidString:							# Create variable invalidString
+	.asciiz "This expression is invalid."		# Output string if input is invalid
+
+### Integer storage declarations
+
+openParens:							# Create variable openParens
+	.word 0							# Initialize to 0
+priorityLevel:							# Variable priorityLevel to store priority level of array elements
+	.word '0'							# Initialize to 0 ASCII to avoid hassle of +4 increment
+maxPriority:							# Variable max priority level to store max priority
+	.word '0'							# Initialize to 0 ASCII because reasons
+.text
+# Text segment for begining of code
+# Main function to implement syscalls 
+main:
+	la $a0, displayString	# Load input string address in to a0
+	li $v0, 4				# Load up parameters for syscall 4 ( print string)
+    	syscall				# Print string at address $a0 
+    	la $a0, inputString		# Load up parameters for syscall 8 ( read string)
+    	li $a1, 400			
+	li $v0,8				
+   	syscall				# Stores input string into mem address at $a0
+    	la $t0, inputString		# Set t0 to address of inputString
+	la $s0, noSpaceString
+
+# Subroutine to remove all spaces from the input string. Because they make it harder.
+remove_space:
+	lb $t7, ($t0)						# Get array value
+	addi $t0, $t0, 1					# Add one to array pointer
+	beq $t7, '\n', parse_string_main		# If newline, go to main
+	beq $t7, '\0', parse_string_main		# If null, go to main
+	bne $t7, ' ', write_string				# If not space, write it to a new string
+	beq $t7, ' ', check_chars			# If space, check previous and next char
+	j remove_space
+# Subroutine to take non-spaces and write to new string location	
+write_string:
+	sb $t7, ($s0) 
+	addi $s0, $s0, 1
+	j remove_space
+	
+# Subroutine to check if numbers are separated by spaces
+check_chars:
+	lb $t8, -1($t0)				# Grab previous elem in t8
+	lb $t9, 1($t0)				# Grab next elem in t9
+	# If first elem is numeric, check next char
+	beq $t8, '0', check_next	
+	beq $t8, '1', check_next
+	beq $t8, '2', check_next
+	beq $t8, '3', check_next
+	beq $t8, '4', check_next	
+	beq $t8, '5', check_next
+	beq $t8, '6', check_next
+	beq $t8, '7', check_next
+	beq $t8, '8', check_next
+	beq $t8, '9', check_next
+	# Else just jump
+	j remove_space
+
+check_next:
+	# Check if next char is numeric. If it is, it's invalid
+	beq $t9, '0', print_invalid	
+	beq $t9, '1', print_invalid
+	beq $t9, '2', print_invalid
+	beq $t9, '3', print_invalid
+	beq $t9, '4', print_invalid	
+	beq $t9, '5', print_invalid
+	beq $t9, '6', print_invalid
+	beq $t9, '7', print_invalid
+	beq $t9, '8', print_invalid
+	beq $t9, '9', print_invalid
+	j remove_space
+	
+# Keep jumping until it reaches EOL    	
+parse_string_main:
+	addi $sp, $sp, -4			# Move stack pointer back 
+	sw $ra, ($sp)				# Store return address (PUSH JAL PARSE_STRING_MAIN)
+	la $t0, noSpaceString
+parse_string:
+	lb $a0, ($t0)					# Get character in string
+	beq $a0, '\0', string_end_main	# Check for end of string literal
+	beq $a0, '\n', string_end_main	# Check for end of string literal
+	jal check_valid_characters 		# Check for valid characters
+	# Check for valid brackets, increment accordingly
+	beq $a0, '(', open_parens
+	beq $a0, ')', closed_parens
+	beq $a0, '+', check_arithmetics
+	beq $a0, '-', check_arithmetics
+	beq $a0, '/', check_arithmetics
+	beq $a0, '*', check_arithmetics
+	beq $a0, '%', check_arithmetics
+	addi $t0, $t0, 1 				#Increment t0 to get next character
+	j parse_string					# Rerun parse_string until string_end is achieved
+
+# Subroutine to check that arithmetic operations aren't followed by another arithmetic operation
+check_arithmetics:
+	lb $s2, -1($t0)						# Load previous char
+	lb $s3, 1($t0)						# Load next char
+	# If any arithmetic operations are before this arithmetic operation, it's invalid.
+	beq $s2,'*', print_invalid
+	beq $s2,'/', print_invalid
+	beq $s2,'%', print_invalid
+	# If any arithmetic operations are after this arithmetic operation, it's invalid.
+	beq $s3,'*', print_invalid
+	beq $s3,'/', print_invalid
+	beq $s3,'%', print_invalid
+	# If arithmetic operation and is the first character, it's invalid. 
+	lb $s4, ($t0)
+	beq $s4, '*', check_null
+	beq $s4, '%', check_null
+	beq $s4, '/', check_null
+	
+	add $t0,$t0,1
+	j parse_string
+
+check_null:
+	beq $s2, '\0', print_invalid
+	add $t0,$t0,1
+	j parse_string
+	
+open_parens:
+	add $t7, $t0, $zero				# Get current address into t7 so I don't mess it up
+	jal check_parens_main
+	lw $t3, openParens
+	addi $t3, $t3, 1
+	sw $t3, openParens
+	addi $t0, $t0, 1 				#Increment t0 to get next character
+	j parse_string
+
+closed_parens:
+	lw $t3, openParens		# Get number of open parens
+	beq $t3,0, print_invalid		# If there are no open parens, it's invalid
+	lb $t4, -1($t0)				# Get previous char
+	beq $t4,'(', print_invalid		# Invalid if previous char is complementary char. () is invalid. 
+	addi $t3,$t3,-1			# Decrement openParens
+	sw $t3, openParens		# Store openParens
+	addi $t0, $t0, 1 			#Increment t0 to get next character
+	j parse_string				# Jump back
+	
+# Check previous contents of string to see if paren is next to valid char
+check_parens_main:
+	addi $sp, $sp, -4			# Move stack pointer back 
+	sw $ra, ($sp)				# Store return address (PUSH JAL CHECK_PARENS_MAIN)
+	addi $t7, $t7, 1			# Check next char, because if an arithmetic expression follows a '(', it's invalid.
+	lb $t6, ($t7)				# Grab next char  
+	beq $t6,'*', print_invalid		# If you get an arithmetic symbol, it's invalid. 
+	beq $t6,'/', print_invalid		# If you get an arithmetic symbol, it's invalid.
+	beq $t6,'%', print_invalid	# If you get an arithmetic symbol, it's invalid.
+	addi $t7, $t7, -1
+	
+check_parens: 				# String in $a0, memory in $t0
+	addi $t7, $t7, -1			# Push pointer back one
+	lb $t6, ($t7) 				# Get previous char
+	beq $t6, '\0', turn_back		# If you get a null, it's probably valid.
+	beq $t6, '(' , check_parens	# If you get a '(', you need to check the next char...
+	beq $t6,'+', turn_back		# If you get an arithmetic symbol, it's valid and you can move on with your life. 
+	beq $t6,'-', turn_back		# If you get an arithmetic symbol, it's valid and you can move on with your life. 
+	beq $t6,'*', turn_back		# If you get an arithmetic symbol, it's valid and you can move on with your life. 
+	beq $t6,'/', turn_back		# If you get an arithmetic symbol, it's valid and you can move on with your life. 
+	beq $t6,'%', turn_back		# If you get an arithmetic symbol, it's valid and you can move on with your life. 
+	j print_invalid				# If you don't get one of those chars, it's invalid. 
+	
+	
+# Subroutine to check if input character in $a0 is a valid character based off of the availableCharacters string
+check_valid_characters:
+	addi $sp, $sp, -4			# Move stack pointer back 
+	sw $ra, ($sp)				# Store return address (PUSH JAL CHECK_VALID_CHARACTERS)
+	la $t1,availableCharacters	# Load address of first available character in to register t1
+	
+available_character_loop:		# Loop over availableCharacters until null terminator, checking if it's valid or not
+	lb $a1, ($t1)				# Store val pointed to by t1 in to a1
+	beq $a1,'\0', print_invalid	# If we get to the null terminator and haven't found any matches, it's invalid
+	beq $a0, $a1, turn_back	# If $a0 in validString, then we're good and can return to parse_string. (debugging subroutine call)
+	addi $t1,$t1,1				# Increment pointer
+	j available_character_loop
+
+turn_back:
+	lw $ra, ($sp)				# Get return address from current SP
+	addi $sp,$sp,4			# Move SP Forward (POP CHECK_VALID_CHARACTERS)
+	jr $ra 					# Jump to check_valid_characters
+	
+# End of string execution code.
+# Check if any trailing symbols (+-*/)
+# Print valid if no issues.
+string_end_main:
+	bne $t3, $zero, print_invalid
+	addi $t0, $t0, -1				# Address of penultimate char in a0
+	lb $a0, ($t0)					# Get previous char
+	beq $a0, ')', string_end_main	# If bracket, keep going back
+	beq $a0,'+',print_invalid		# If arithmetic expression, it's invalid! (Arithmetic expression floating at end)
+	beq $a0,'-', print_invalid		# If arithmetic expression, it's invalid! (Arithmetic expression floating at end)
+	beq $a0,'*', print_invalid		# If arithmetic expression, it's invalid! (Arithmetic expression floating at end)
+	beq $a0,'%', print_invalid		# If arithmetic expression, it's invalid! (Arithmetic expression floating at end)
+	
+print_valid:	
+	la $a0, validString				# Load input string address in to a0
+	li $v0, 4						# Load up parameters for syscall 4 ( print string)
+    	syscall						# Print string at address $a0 
+	j valid_expression_main 		# Go on to solve expression
+
+print_invalid:	
+	la $a0, invalidString	# Load input string address in to a0
+	li $v0, 4				# Load up parameters for syscall 4 ( print string)
+    	syscall				# Print string at address $a0 
+	li $v0, 10				# Load up parameters for syscall 
+    	syscall				# Syscall 10 -> Return statement
+
+###########################################################EXPRESSION IS VALID############################################################
+
+
+# Main code to evaluate a valid expression. 
+# Desired algorithm:
+# Create secondary array with 1:1 mapping, indicating each element's priority
+# Find max of priority array
+# Evaluate the subexpression indicated by the max of the priority array
+# Collapse both expression and priority arrays
+# Decrement max, repeat
+
+valid_expression_main:
+	### Save important elements so I don't forget about them:
+	la $s0, noSpaceString				# Address of noSpaceString (valid expression) in $s0
+	la $s1, priorityArray				# Address of priorityArray in $s1
+	la $s2, priorityLevel				# Value of priority level in $s2 (for quick increment/decrement)
+	### Any other important variables to be reserved
+	
+	 ### Get temp values to mess around without fear of losing initial address 
+	 la $t0, noSpaceString 				# Address of valid expression
+	 la $t1, priorityArray				# Address of priority array
+	 la $t2, priorityLevel 				# Address of priority level
+	 la $t3, maxPriority					# Address of max priority 
+	 ### Any other important variables to be reserved ###
+	 
+# Parse through each array, associating a priority level with an index
+priority_parse:
+	lb $t8, ($t2)							# Get priority level value in $t8
+	lb $t9, ($t0)							# Get value of noSpaceString in $t9
+	beq $t9, '\n', placeholder_call			# If there's a newline, you're done
+	beq $t9, '\0', placeholder_call			# If there's a null, you're done
+	beq $t9, '(', inc_priority_level			# If it's an open paren, increment priority
+	beq $t9, ')', dec_priority_level			# If it's a closer paren, decrement priority
+	sb $t8, ($t1) 							# Store value of priority level in to priority array 
+	addi $t0, $t0, 1						# Increment noSpaceString pointer 
+	addi $t1, $t1, 1						# Increment priorityArray pointer 
+	j priority_parse						# Jump back to priority parse!
+
+# Subroutine to increment priority level	 
+inc_priority_level:
+	lb $t7, ($t3) 							# Get priority max in $t7
+	addi $t8, $t8, 1						# Increment priority level by 1
+	sb $t8, ($t1) 							# Store value of priority level in to priority array 
+	sb $t8 ($t2)							# Store value of priority level in priority level variable
+	addi $t0, $t0, 1						# Increment noSpaceString pointer 
+	addi $t1, $t1, 1						# Increment priorityArray pointer
+	bgt $t8,$t7,store_max					# If current priority level is higher than max priority level, store it and its index
+	j priority_parse						# Go back to priority parse!
+
+# Subroutine to decrement priority level
+dec_priority_level:	 
+	sb $t8, ($t1) 							# Store value of priority level in to priority array 
+	# Decrement after first store so that matching parens have same priority level
+	addi $t8, $t8, -1						# Decrement  priority level by 1
+	sb $t8 ($t2)							# Store value of priority level in priority level variable
+	addi $t0, $t0, 1						# Increment noSpaceString pointer 
+	addi $t1, $t1, 1						# Increment priorityArray pointer
+	j priority_parse						# Go back to priority parse!
+
+# Subroutine to write max  priority level to variable
+store_max:
+		 sb $t8, ($t3) 			# Write max to address of t3 
+		 j priority_parse		# Go back to priority parse
+		 
+###
+# Successful mapping of priority array achieved
+# Max priority saved in ($t3)
+# Next step: Iterate through string until you get to the highest priority, then grab sub expression
+###
+
+placeholder_call:
+		 
+	 
+	 
+	 
+	 
