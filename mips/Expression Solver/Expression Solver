@@ -8,18 +8,20 @@
 ### Empty storage declarations
 
 inputString:							# Create variable inputString
-	.space 200						# Reserve 400 bytes of data
+	.space 160						# Reserve 400 bytes of data
 noSpaceString:						# Create variable noSpaceString
-	.space 200						# Reserve 400 bytes of data
+	.space 160						# Reserve 400 bytes of data
 priorityArray:							# Variable priorityArray for storing priority levels
-	.space 200						# Reserve 400 bytes of data
-
+	.space 160						# Reserve 400 bytes of data
+subExpressionArray	:					# Variable subExpressionArray for storing sub expressions:
+	.space 100						# Reserve 100 bytes of data
+	
 ### ASCII string storage declarations
 
 displayString:							# Create variable displayString
 	.asciiz "Please enter an expression: "	# Save prompt text in memory
 availableCharacters: 					# Store valid characters in 
-	.asciiz "()0123456789*+-/%"			# All valid characters probably
+	.asciiz "()0123456789*+-/"			# All valid characters probably
 validString:							# Create variable validString
 	.asciiz "This expression is valid."		# Output string if input is valid
 invalidString:							# Create variable invalidString
@@ -41,7 +43,7 @@ main:
 	li $v0, 4				# Load up parameters for syscall 4 ( print string)
     	syscall				# Print string at address $a0 
     	la $a0, inputString		# Load up parameters for syscall 8 ( read string)
-    	li $a1, 400			
+    	li $a1, 160			
 	li $v0,8				
    	syscall				# Stores input string into mem address at $a0
     	la $t0, inputString		# Set t0 to address of inputString
@@ -244,6 +246,8 @@ valid_expression_main:
 	la $s0, noSpaceString				# Address of noSpaceString (valid expression) in $s0
 	la $s1, priorityArray				# Address of priorityArray in $s1
 	la $s2, priorityLevel				# Value of priority level in $s2 (for quick increment/decrement)
+	la $s3, maxPriority					# Address of max priority in $s3
+	la $s4,subExpressionArray			# Address of subexpressionarray in $s4
 	### Any other important variables to be reserved
 	
 	 ### Get temp values to mess around without fear of losing initial address 
@@ -257,8 +261,8 @@ valid_expression_main:
 priority_parse:
 	lb $t8, ($t2)							# Get priority level value in $t8
 	lb $t9, ($t0)							# Get value of noSpaceString in $t9
-	beq $t9, '\n', placeholder_call			# If there's a newline, you're done
-	beq $t9, '\0', placeholder_call			# If there's a null, you're done
+	beq $t9, '\n', grab_sub_expression_main	# If there's a newline, you're done
+	beq $t9, '\0', grab_sub_expression_main	# If there's a null, you're done
 	beq $t9, '(', inc_priority_level			# If it's an open paren, increment priority
 	beq $t9, ')', dec_priority_level			# If it's a closer paren, decrement priority
 	sb $t8, ($t1) 							# Store value of priority level in to priority array 
@@ -298,9 +302,41 @@ store_max:
 # Next step: Iterate through string until you get to the highest priority, then grab sub expression
 ###
 
-placeholder_call:
-		 
-	 
-	 
-	 
-	 
+# Subroutine to grab sub expression
+grab_sub_expression_main:
+	
+	  ### Get temp values to mess around without fear of losing initial address 
+	 la $t0, noSpaceString 				# Address of valid expression
+	 la $t1, priorityArray				# Address of priority array
+	 la $t2, priorityLevel 				# Address of current priority level
+	 la $t3, maxPriority					# Address of max priority 
+	 la $t4, subExpressionArray			# Address of sub expression array in $t4
+	 ### Any other important variables to be reserved ###
+	
+	# Iterate through priority string, looking for max:
+find_max:
+	lb $t9, ($t1)							# Get byte of priority array in $t9
+	lb $t8, ($t0)							# Get byte of expression in $t8 
+	lb $t7 ($t3)							# Get max in $t7
+	beq $t7, $t9 sub_expression_start		# Max = current index, get substring	 
+	addi $t1, $t1, 1						# Increment pointers
+	addi $t0, $t0, 1						# Increment pointers
+	beq $t8, '\n', recurse_placeholder		# Fully parsed string, recurse with lower max val
+	j find_max
+# Subroutine to grab a whole sub expression of equal priority level
+sub_expression_start:	 
+	# Load byte from noSpaceString, and store in subExpressionArray, check priority array to make sure it's max
+	# noSpaceString val stored in $t8, priority array in $t9
+	lb $t9, ($t1)								# Get new value of priorityArray in t9
+	lb $t8, ($t0)								# Get new value of noSpaceString in t8
+	bne $t7, $t9, sub_expression_end				# End of sub expression, don't write
+	sb $t8, ($t4)								# Write sub expression in to sub expression array
+	addi $t4,$t4,1								# Increment the pointers		
+	addi $t0,$t0,1								# Increment the pointers
+	addi $t1,$t1,1								# Increment the pointers			
+	j sub_expression_start						# Keep going until end of expression 
+								
+								### Evaluation of sub expression ###		
+sub_expression_end:								
+
+recurse_placeholder:
