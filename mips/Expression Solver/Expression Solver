@@ -15,6 +15,8 @@ priorityArray:							# Variable priorityArray for storing priority levels
 	.space 160						# Reserve 400 bytes of data
 subExpressionArray	:					# Variable subExpressionArray for storing sub expressions:
 	.space 100						# Reserve 100 bytes of data
+tempArray:							# Temp array storage for writing temp strings
+	.space 100						# Reserve 100 bytes
 	
 ### ASCII string storage declarations
 
@@ -221,7 +223,7 @@ print_valid:
 	la $a0, validString				# Load input string address in to a0
 	li $v0, 4						# Load up parameters for syscall 4 ( print string)
     	syscall						# Print string at address $a0 
-	j valid_expression_main 		# Go on to solve expression
+	j expression_collapse_main 		# Go on to solve expression
 
 print_invalid:	
 	la $a0, invalidString	# Load input string address in to a0
@@ -235,12 +237,159 @@ print_invalid:
 
 # Main code to evaluate a valid expression. 
 # Desired algorithm:
+# Collapse '+' and '-' operators
 # Create secondary array with 1:1 mapping, indicating each element's priority
 # Find max of priority array
 # Evaluate the subexpression indicated by the max of the priority array
 # Collapse both expression and priority arrays
 # Decrement max, repeat
 
+#############################################        Collapse '-' and '+' in main expression        #############################################
+
+expression_collapse_main:
+	### Save important elements so I don't forget about them:
+	la $s0, noSpaceString				# Address of noSpaceString (valid expression) in $s0
+	la $s1, tempArray					# Address of tempArray in $s1
+	### Any other important variables to be reserved
+
+	 ### Get temp values to mess around without fear of losing initial address 
+	 la $t0, noSpaceString 				# Address of valid expression
+	 la $t1, tempArray					# Address of tempArray in $s1
+	 ### Any other important variables to be reserved ###
+	 
+#############################################       START Collapse '-+-' in main expression        #############################################	
+# Subroutines to remove '+' adjacent to '-'
+remove_leading_plus:
+	lb $t9, ($t0) 								# Write in string index to $t8
+	addi $t0, $t0, 1							# Push $t0 pointer up 1
+	beq $t9, '\0', write_temp_to_inString_main	# If it's a null, go on to next section
+	beq $t9, '\n', write_temp_to_inString_main	# If it's a newlinel, go on to next section	
+	beq $t9, '+', check_next_plus				# If it's a plus, need to check next and previous characters 
+	sb $t9, ($t1) 								# If it's not a plus, just store it back to tempArray and keep going	
+	addi $t1, $t1, 1							# Increment tempArray pointer
+	j remove_leading_plus
+
+# Subroutine when one plus is found. Checks adjacent characters for '-', if '-' exists, don't write to temp, else write to temp 	
+check_next_plus:
+	lb $t7, ($t0)						# Grab next char in to t7
+	beq $t7, '-', remove_leading_plus 	# Next char is '-', so remove from string  
+	lb $t7, -1($t1)						# Grab last char of temp array in t7
+	beq $t7, '-', remove_leading_plus 	# Next char is a '-', so remove from string
+	sb $t9, ($t1)						# Write char in $t9 to tempArray
+	addi $t1, $t1, 1					# Increment tempArray pointer
+	j remove_leading_plus
+	
+#############################################       START overwrite inString       #############################################	
+# Subroutine to clear inString and write temp over the old data
+write_temp_to_inString_main:
+	 la $t0, noSpaceString 				# Address of valid expression
+	 la $t1, tempArray					# Address of tempArray in $s1
+	addi $t2, $zero, '\0'
+	
+# Subroutine to repace all characters in inString to null 	
+erase_inString:
+	lb $t9, ($t0) 						# get byte of inString, write in to $t9
+	beq $t9, '\n', write_inString_main		# if newline, we're done erasing
+	beq $t9, '\0', write_inString_main		# If null, we're done erasing	 
+	sb $t2, ($t0)						# Write null to inString
+	addi $t0, $t0, 1					# Increment pointer
+	j erase_inString					# Keep iterating
+
+# Subroutine to write temp array in to  	
+write_inString_main:
+	sb $t2, ($t0) 									# Erase floating newline just in case	 
+	la $t0, noSpaceString		 					# Address of valid expression
+write_inString:	
+	lb $t9, ($t1)									# Get byte from temp array
+	beq $t9, '\0', clear_temp_array_main				# If it's null, we're done
+	sb $t9, ($t0)									# Write byte in to string 
+	addi $t0, $t0, 1								# Increment inString pointer
+	addi $t1, $t1, 1								# Increment tempArray pointer
+	j write_inString
+# Subroutine to clear temp_array after writing it -- DONT FORGET COMPARE TO CURRENT TEMP ARRAY TO SEE IF PREVIOUS CHAR IS NEGATIVE
+clear_temp_array_main:
+	 la $t0, noSpaceString 				# Address of valid expression
+	 la $t1, tempArray					# Address of tempArray in $s1
+clear_temp_array:
+	lb $t9, ($t1) 									# get byte of inString, write in to $t9
+	beq $t9, '\n', remove_clustered_negatives_main	# if newline, we're done erasing
+	beq $t9, '\0', remove_clustered_negatives_main	# If null, we're done erasing	 
+	sb $t2, ($t1)									# Write null to inString
+	addi $t1, $t1, 1								# Increment pointer
+	j clear_temp_array							# Keep iterating		 
+	 
+#############################################       E N D  overwrite inString     			       #############################################																										
+#############################################       E N D  Collapse '-+-' in main expression        #############################################		
+#############################################       START Collapse ' - ' in main expression         #############################################	
+remove_clustered_negatives_main:
+	beq $s7, 1, remove_clustered_positives_main	# If $s7 is one, it means the function was called from r_c_n, and thusly it needs to jump to the next function in line
+	beq $s7, 2, valid_expression_main			# If $s7 is two, it means the function was called from r_c_p, and thusly it needs to jump to the next function in line
+	 sb $t2, ($t1) 								# Erase floating newline just in case	
+	 ### Get temp values to mess around without fear of losing initial address 
+	 la $t0, noSpaceString 						# Address of valid expression
+	 la $t1, tempArray							# Address of tempArray in $s1
+	 ### Any other important variables to be reserved ###
+	addi $s7, $zero, 1
+
+	# Change valid expression main to write temp stuff
+remove_clustered_negatives:
+	lb $t9, ($t0) 								# Write in string index to $t8
+	addi $t0, $t0, 1							# Push $t0 pointer up 1
+	beq $t9, '\0', write_temp_to_inString_main	# If it's a null, go on to next section
+	beq $t9, '\n', write_temp_to_inString_main	# If it's a newline, go on to next section	
+	beq $t9, '-', check_next_negative			# If it's a minus, need to check next character 
+	sb $t9, ($t1) 								# If it's not a minus, just store it back to tempArray and keep going	
+	addi $t1, $t1, 1							# Increment tempArray pointer
+	j remove_clustered_negatives
+
+# Subroutine when one minus is found. Checks adjacent characters for '-', if '-' is next in array, write '+'. 
+check_next_negative:
+	lb $t7, ($t0)						# Grab next char in to t7
+	beq $t7, '-', write_plus			 	# Next char is '-', so remove from string  
+	# Next char isn't minus, so just write the first minus to temp
+	sb $t9, ($t1)						# Write char in $t9 to tempArray
+	addi $t1, $t1, 1					# Increment tempArray pointer
+	j remove_clustered_negatives		# Go back to main parser
+	
+# Subroutine to write a plus to tempArray, increment pointer (a second time), and jump back to remove_clustered_negatives
+write_plus:
+	addi $t9, $zero, '+'					# Set $t9 equal to '+'
+	sb $t9, ($t1)						# Write char in $t9 to tempArray
+	addi $t0, $t0, 1					# Increment inArray pointer (again)
+	addi $t1,$t1,1						# Increment tempArray pointer
+	j remove_clustered_negatives
+	
+#############################################       E N D   Collapse '-'  in main expression        #############################################
+#############################################       START  Collapse '+' in main expression        #############################################	
+# Subroutine to initialize variables used in remove_clusted_positives
+remove_clustered_positives_main:
+	 sb $t2, ($t1) 								# Erase floating newline just in case	
+	 ### Get temp values to mess around without fear of losing initial address 
+	 la $t0, noSpaceString 						# Address of valid expression
+	 la $t1, tempArray							# Address of tempArray in $s1
+	 ### Any other important variables to be reserved ###
+	addi $s7, $zero, 2							# Set jumpvar
+
+# Subroutine to check for '+' in string
+remove_clustered_positives:
+	lb $t9, ($t0) 								# Get byte from string
+	addi $t0,$t0,1								# Increment pointer
+	beq $t9, '\0', write_temp_to_inString_main	# If it's a null, go on to next section
+	beq $t9, '\n', write_temp_to_inString_main	# If it's a newline, go on to next section
+	beq $t9, '+', check_next_positive				# Have to check if following char is positive
+	sb $t9, ($t1)								# Not a positive, write char to temp array
+	addi $t1, $t1, 1							# Increment temp pointer	
+	j remove_clustered_positives
+
+check_next_positive:
+	lb $t8, ($t0)								# Get next char in t8
+	beq $t9, $t8, remove_clustered_positives		# Next char is +, so don't write anything
+	beq $t8, '-', remove_clustered_positives		# Next char is a -, so don't write anything
+	sb $t9, ($t1)								# Not a '+', so write the current byte to temp
+	addi $t1, $t1, 1							# Increment pointer
+	j remove_clustered_positives				# jump back
+		
+# Subroutine to 			
 valid_expression_main:
 	### Save important elements so I don't forget about them:
 	la $s0, noSpaceString				# Address of noSpaceString (valid expression) in $s0
@@ -337,6 +486,27 @@ sub_expression_start:
 	j sub_expression_start						# Keep going until end of expression 
 								
 								### Evaluation of sub expression ###		
+# Iterate through string, looking for * and /
 sub_expression_end:								
+	la $t4, 1($s4) 								# Get address of substring in $t4 offset by first char '('
+mul_parse:
+	lb $t8, ($t4) 								# Grab character and write in to t8
+	beq $t8, ')', finish_mul						# End of string, parse for addition/subtraction
+	beq $t8, '*' apply_mul						# Apply multiplication
+	beq $t8, '/', apply_div						# Apply division
+	addi $t4, $t4, 1							# Increment $t4
+	j mul_parse								# Go back to mul_parse
+	
+apply_mul:
+#	lb $t7, -1($t4) 								# Grab previous byte in t7
+#	lb $t9, +1($t4) 							# Grab next byte in t7
+check_adjacents:
+#	beq $t9, '+', next_right						# Input check
+#	beq $t9, '-', next_right_sub					# Have to count negatives to get sign accurately
+	
+apply_div:
 
+
+finish_mul:
+	
 recurse_placeholder:
