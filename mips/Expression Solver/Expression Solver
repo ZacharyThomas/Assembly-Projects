@@ -25,7 +25,7 @@ displayString:							# Create variable displayString
 availableCharacters: 					# Store valid characters in 
 	.asciiz "()0123456789*+-/"			# All valid characters probably
 validString:							# Create variable validString
-	.asciiz "This expression is valid."		# Output string if input is valid
+	.asciiz "This expression is valid.\nans = "		# Output string if input is valid
 invalidString:							# Create variable invalidString
 	.asciiz "This expression is invalid."		# Output string if input is invalid
 
@@ -49,7 +49,9 @@ tempCounter:						# Temp Counter var which I can't push on to stack for reasons
 	.word 0
 tempResult:							# Accumulator register for storing results of singular operations
 	.word 0	
-finIteration:
+finIteration:							# Variable which tells program to stop
+	.word 0
+negFlag::							# Variable to tell when a number is negative
 	.word 0
 .text
 
@@ -674,7 +676,16 @@ get_operands:
 	check_next_digits_main:
 	# Perform setup operations - reset t4 & counter var
 	addi $s6, $zero, 0
-	lw $t4, ($sp) 				
+	lw $t4, ($sp)
+	# Check if negative is the first value you see				
+	lb $t7, +1($t4)
+	beq $t7, '-', set_negative_flag
+	j check_next_digits
+# Write negative flag high
+set_negative_flag:
+	li $t7, 1
+	sw $t7, negFlag
+	addi $t4, $t4, 1
 	check_next_digits:	
 		# Get nexts char in to t7
 		addi $t4, $t4, 1
@@ -690,7 +701,9 @@ get_operands:
 		
 # Subroutine to take integers in stack and reconstruct integer (ones place at top of stack, final place at bottom)
 reconstruct_next_int:
-	# Ints stored on stack equal to counter, $s6 	
+	# Ints stored on stack equal to counter, $s6 
+	# Check for negative	
+	lw $s0, negFlag 
 	# Initialize counter var
 	add $s7, $zero, $zero 
 	# Subroutine which has independent counter, adding numbers to result the same way as first
@@ -709,9 +722,9 @@ reconstruct_next_int:
 			addi $s7, $s7, -1
 			beq $s7, 1, add_to_Op_next
 			j conversion_loop_next
-			
 		# Subroutine to add digit to first operator
 		add_to_Op_next:
+			beq $s0, 1, invert_input
 			lw $s7, tempCounter
 			# Get operator in to t6
 			lw $t6, ($a3)
@@ -721,9 +734,21 @@ reconstruct_next_int:
 			sw $t6, ($a3)
 			beq $s7, $s6, finished_reconstruction
 			j pop_constructor
-			
+		invert_input:
+			mul $s5, $s5, -1	
+			lw $s7, tempCounter
+			# Get operator in to t6
+			lw $t6, ($a3)
+			# t6 += current_val (stored in t7)
+			add $t6, $t6, $s5
+			# Write back in to register 
+			sw $t6, ($a3)
+			beq $s7, $s6, finished_reconstruction
+			j pop_constructor		
 # Operators for mul and div stored in opOne and opTwo, run branches for each case, run routes, pop t4 off stack
 finished_reconstruction:
+	li $t4, 0
+	sw $t4, negFlag
 	# Pop address of t4
 	lw $t4, ($sp)
 	addi $sp, $sp, 4
@@ -820,7 +845,15 @@ search_and_destroy_left:
 # Subroutine to replace string right of operator with null 	
 search_and_destroy_right_main:
 	# Restore pointer
-	lw $t4, ($sp)		
+	lw $t4, ($sp)
+	# Check for following negative
+	lb $t8, +1($t4)
+	beq $t8, '-', null_this_negative
+	j search_and_destroy_right
+null_this_negative:
+	addi $t4, $t4, 1
+	li $t8, '\0'
+	sb $t8, ($t4)	
 search_and_destroy_right:
 	# Push pointer forward while you don't have an integer
 	addi $t4, $t4, 1 
@@ -833,7 +866,8 @@ search_and_destroy_right:
 	j search_and_destroy_right
 
 # Subroutine to reconstruct temparray
-post_destruction_parsing_main:				
+post_destruction_parsing_main:
+			
 	# Write special char to mark location of end of nulls
 	li $t7, '$'
 	sb $t7, -1($t4)
@@ -1205,8 +1239,55 @@ final_flag:
 
 # Expression completely reduced, we're done. Result stored in tempResult
 finish_calculation:
-	lw $a0, tempResult
-	li $v0, 1
-	syscall
+	# convert noSpaceString to ascii
+	la $t9, noSpaceString
+	la $a0, noSpaceString	# Load input string address in to a0
+	# Check if first character is negative
+	lb $t1, ($t9)
+	blt $t1, 0, write_negative_in_inString_final
+	j convert_noSpaceString_to_ascii
+# Subroutine to print a negative in to noSpaceString
+write_negative_in_inString_final:
+	li $t1, '-'
+	sb $t1, -1($t9)
+	addi $a0, $a0, -1				# I'm a bad person
+convert_noSpaceString_to_ascii:
+	lb $t1, ($t9)
+	beq $t1, '\0', end
+	beq $t1, 1, add_back	
+	beq $t1, 2, add_back	
+	beq $t1, 3, add_back	
+	beq $t1, 4, add_back	
+	beq $t1, 5, add_back	
+	beq $t1, 6, add_back	
+	beq $t1, 7, add_back	
+	beq $t1, 8, add_back	
+	beq $t1, 9, add_back	
+	beq $t1, 10, add_back	
+	blt $t1, 0, invert_and_convert_to_ascii
+	sb $t1, ($t9)
+	addi $t9, $t9, 1
+add_back:
+	addi $t1, $t1, 48
+	beq $t1, 58, sub_10
+	sb $t1, ($t9)
+	addi $t9, $t9, 1
+	j convert_noSpaceString_to_ascii
+sub_10:
+	addi $t1, $t1, -10
+	sb $t1, ($t9)
+	addi $t9, $t9, 1
+	j convert_noSpaceString_to_ascii
+# Subroutine to convert negative numbers back to ascii
+invert_and_convert_to_ascii:
+	mul $t1, $t1, -1
+	addi $t1, $t1, 48
+	sb $t1, ($t9)
+	addi $t9, $t9, 1
+	j convert_noSpaceString_to_ascii
+end:
+
+	li $v0, 4				# Load up parameters for syscall 4 ( print string)
+    	syscall				# Print string at address $a0 
 
 anywhere_but_here:
