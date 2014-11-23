@@ -29,6 +29,7 @@ validString:							# Create variable validString
 invalidString:							# Create variable invalidString
 	.asciiz "This expression is invalid."		# Output string if input is invalid
 
+
 ### Integer storage declarations
 
 openParens:							# Create variable openParens
@@ -465,6 +466,7 @@ valid_expression_main:
 	la $s3, maxPriority					# Address of max priority in $s3
 	la $s4,subExpressionArray			# Address of subexpressionarray in $s4
 	### Any other important variables to be reserved
+
 	
 	 ### Get temp values to mess around without fear of losing initial address 
 	 la $t0, noSpaceString 				# Address of valid expression
@@ -472,7 +474,16 @@ valid_expression_main:
 	 la $t2, priorityLevel 				# Address of priority level
 	 la $t3, maxPriority					# Address of max priority 
 	 ### Any other important variables to be reserved ###
-	 
+	 lb $t8, ($s4)
+	 bne $t8, '\0', clear_sub_expression
+	 j priority_parse
+clear_sub_expression:
+	li $t9, '\0'
+	sb $t9, ($s4)
+	addi $s4, $s4, 1
+	lb $t8, ($s4)
+	bne $t8, '\0', clear_sub_expression
+	j valid_expression_main
 # Parse through each array, associating a priority level with an index
 priority_parse:
 	lb $t8, ($t2)							# Get priority level value in $t8
@@ -635,7 +646,7 @@ get_operands:
 	# Push address of operator on to stack
 	addi $sp, $sp, -4
 	sw $t4, ($sp) 						
-	
+	lb $t7, -1($t4)
 	# Need subroutine which: 1) sees if previous char is digit, if it is, increment counter, add to result, recall
 	check_previous_digits:
 		# Get previous char in to t7
@@ -714,6 +725,7 @@ reconstruct_next_int:
 		# Add 1 to the counter and store it in memory
 		addi $s7, $s7, 1
 		sw $s7, tempCounter
+		bgt $s5, 10, finished_reconstruction_zero_handler
 		beq $s5, 10, pop_constructor
 		beq $s7, 1, add_to_Op_next
 		# do multiplcation stuff
@@ -746,6 +758,8 @@ reconstruct_next_int:
 			beq $s7, $s6, finished_reconstruction
 			j pop_constructor		
 # Operators for mul and div stored in opOne and opTwo, run branches for each case, run routes, pop t4 off stack
+finished_reconstruction_zero_handler:
+	addi $sp, $sp, -4
 finished_reconstruction:
 	li $t4, 0
 	sw $t4, negFlag
